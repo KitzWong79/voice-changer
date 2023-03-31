@@ -4,11 +4,23 @@
 // 24000sample -> 1sec, 128sample(1chunk) -> 5.333msec
 // 187.5chunk -> 1sec
 
+export const ClientType = {
+    "MMVCv15": "MMVCv15",
+    "MMVCv13": "MMVCv13",
+    "so_vits_svc_40": "so_vits_svc_40",
+    "so_vits_svc_40_c": "so_vits_svc_40_c",
+    "so_vits_svc_40v2": "so_vits_svc_40v2",
+    "so_vits_svc_40v2_c": "so_vits_svc_40v2_c",
+
+} as const
+export type ClientType = typeof ClientType[keyof typeof ClientType]
+
 ///////////////////////
 // サーバセッティング
 ///////////////////////
 export const InputSampleRate = {
     "48000": 48000,
+    "44100": 44100,
     "24000": 24000
 } as const
 export type InputSampleRate = typeof InputSampleRate[keyof typeof InputSampleRate]
@@ -59,6 +71,13 @@ export const ServerSettingKey = {
     "f0Detector": "f0Detector",
     "recordIO": "recordIO",
 
+    "tran": "tran",
+    "noiceScale": "noiceScale",
+    "predictF0": "predictF0",
+    "silentThreshold": "silentThreshold",
+    "extraConvertSize": "extraConvertSize",
+    "clusterInferRatio": "clusterInferRatio",
+
     "inputSampleRate": "inputSampleRate",
 } as const
 export type ServerSettingKey = typeof ServerSettingKey[keyof typeof ServerSettingKey]
@@ -80,6 +99,13 @@ export type VoiceChangerServerSetting = {
     f0Detector: F0Detector // dio or harvest
     recordIO: number // 0:off, 1:on
 
+    tran: number // so-vits-svc
+    noiceScale: number // so-vits-svc
+    predictF0: number // so-vits-svc
+    silentThreshold: number // so-vits-svc
+    extraConvertSize: number// so-vits-svc
+    clusterInferRatio: number // so-vits-svc
+
     inputSampleRate: InputSampleRate
 }
 
@@ -91,7 +117,10 @@ export type ServerInfo = VoiceChangerServerSetting & {
     onnxExecutionProviders: OnnxExecutionProvider[]
 }
 
-export const DefaultServerSetting: ServerInfo = {
+export type ServerInfoSoVitsSVC = ServerInfo & {
+    speakers: { [key: string]: number }
+}
+export const DefaultServerSetting_MMVCv15: ServerInfo = {
     srcId: 0,
     dstId: 101,
     gpu: 0,
@@ -105,6 +134,117 @@ export const DefaultServerSetting: ServerInfo = {
     onnxExecutionProvider: OnnxExecutionProvider.CPUExecutionProvider,
     f0Detector: F0Detector.dio,
     recordIO: 0,
+
+    tran: 0,
+    noiceScale: 0,
+    predictF0: 0,
+    silentThreshold: 0,
+    extraConvertSize: 0,
+    clusterInferRatio: 0,
+
+    inputSampleRate: 24000,
+
+    // 
+    status: "ok",
+    configFile: "",
+    pyTorchModelFile: "",
+    onnxModelFile: "",
+    onnxExecutionProviders: []
+}
+
+export const DefaultServerSetting_MMVCv13: ServerInfo = {
+    srcId: 107,
+    dstId: 100,
+    gpu: 0,
+
+    crossFadeOffsetRate: 0.0,
+    crossFadeEndRate: 1.0,
+    crossFadeOverlapSize: CrossFadeOverlapSize[1024],
+
+    framework: Framework.ONNX,
+    f0Factor: 1.0,
+    onnxExecutionProvider: OnnxExecutionProvider.CPUExecutionProvider,
+    f0Detector: F0Detector.dio,
+    recordIO: 0,
+
+    tran: 0,
+    noiceScale: 0,
+    predictF0: 0,
+    silentThreshold: 0,
+    extraConvertSize: 0,
+    clusterInferRatio: 0,
+
+    inputSampleRate: 24000,
+
+    // 
+    status: "ok",
+    configFile: "",
+    pyTorchModelFile: "",
+    onnxModelFile: "",
+    onnxExecutionProviders: []
+}
+
+export const DefaultServerSetting_so_vits_svc_40: ServerInfo = {
+    srcId: 0,
+    dstId: 0,
+    gpu: 0,
+
+    crossFadeOffsetRate: 0.0,
+    crossFadeEndRate: 1.0,
+    crossFadeOverlapSize: CrossFadeOverlapSize[1024],
+
+    framework: Framework.PyTorch,
+    f0Factor: 1.0,
+    onnxExecutionProvider: OnnxExecutionProvider.CPUExecutionProvider,
+    f0Detector: F0Detector.dio,
+    recordIO: 0,
+
+    // tran: 0,
+    // noiceScale: 0,
+    // predictF0: 0,
+    // silentThreshold: 0,
+    tran: 10,
+    noiceScale: 0.3,
+    predictF0: 0,
+    silentThreshold: 0.00001,
+    extraConvertSize: 1024 * 32,
+    clusterInferRatio: 0.1,
+
+    inputSampleRate: 24000,
+
+    // 
+    status: "ok",
+    configFile: "",
+    pyTorchModelFile: "",
+    onnxModelFile: "",
+    onnxExecutionProviders: []
+}
+
+export const DefaultServerSetting_so_vits_svc_40v2: ServerInfo = {
+    srcId: 0,
+    dstId: 0,
+    gpu: 0,
+
+    crossFadeOffsetRate: 0.0,
+    crossFadeEndRate: 1.0,
+    crossFadeOverlapSize: CrossFadeOverlapSize[1024],
+
+    framework: Framework.PyTorch,
+    f0Factor: 1.0,
+    onnxExecutionProvider: OnnxExecutionProvider.CPUExecutionProvider,
+    f0Detector: F0Detector.dio,
+    recordIO: 0,
+
+    // tran: 0,
+    // noiceScale: 0,
+    // predictF0: 0,
+    // silentThreshold: 0,
+    tran: 10,
+    noiceScale: 0.3,
+    predictF0: 0,
+    silentThreshold: 0.00001,
+    extraConvertSize: 1024 * 32,
+    clusterInferRatio: 0.1,
 
     inputSampleRate: 24000,
 
@@ -142,6 +282,7 @@ export type Protocol = typeof Protocol[keyof typeof Protocol]
 
 export const SendingSampleRate = {
     "48000": 48000,
+    "44100": 44100,
     "24000": 24000
 } as const
 export type SendingSampleRate = typeof SendingSampleRate[keyof typeof SendingSampleRate]
@@ -165,6 +306,22 @@ export const DefaultWorkletNodeSetting: WorkletNodeSetting = {
     protocol: "sio",
     sendingSampleRate: 24000,
     inputChunkNum: 48,
+    downSamplingMode: "average"
+}
+
+export const DefaultWorkletNodeSetting_so_vits_svc_40: WorkletNodeSetting = {
+    serverUrl: "",
+    protocol: "sio",
+    sendingSampleRate: 24000,
+    inputChunkNum: 128,
+    downSamplingMode: "average"
+}
+
+export const DefaultWorkletNodeSetting_so_vits_svc_40v2: WorkletNodeSetting = {
+    serverUrl: "",
+    protocol: "sio",
+    sendingSampleRate: 24000,
+    inputChunkNum: 128,
     downSamplingMode: "average"
 }
 

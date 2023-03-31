@@ -1,6 +1,4 @@
 import sys
-# sys.path.append("MMVC_Client/python")
-sys.path.append("so-vits-svc")
 
 from distutils.util import strtobool
 from datetime import datetime
@@ -16,7 +14,7 @@ from mods.ssl import create_self_signed_cert
 from voice_changer.VoiceChangerManager import VoiceChangerManager
 from sio.MMVC_SocketIOApp import MMVC_SocketIOApp
 from restapi.MMVC_Rest import MMVC_Rest
-from const import NATIVE_CLIENT_FILE_MAC, NATIVE_CLIENT_FILE_WIN, SSL_KEY_DIR
+from const import NATIVE_CLIENT_FILE_MAC, NATIVE_CLIENT_FILE_WIN, SSL_KEY_DIR, setModelType
 import subprocess
 import multiprocessing as mp
 
@@ -39,6 +37,12 @@ def setupArgParser():
                         default=True, help="generate self-signed certificate")
     parser.add_argument("--colab", type=strtobool,
                         default=False, help="run on colab")
+    parser.add_argument("--modelType", type=str,
+                        default="MMVCv15", help="model type: MMVCv13, MMVCv15, so-vits-svc-40, so-vits-svc-40v2, so-vits-svc-40v2_tsukuyomi")
+    parser.add_argument("--cluster", type=str, help="path to cluster model")
+    parser.add_argument("--hubert", type=str, help="path to hubert model")
+    parser.add_argument("--internal", type=strtobool, default=False, help="各種パスをmac appの中身に変換")
+    parser.add_argument("--useHubertOnnx", type=strtobool, default=False, help="use hubert onnx")
 
     return parser
 
@@ -64,12 +68,8 @@ def printMessage(message, level=0):
         else:
             print(f"\033[47m    {message}\033[0m")
 
-# global app_socketio
-# global app_fastapi
-
 
 parser = setupArgParser()
-# args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 
 # printMessage(f"Phase name:{__name__}", level=2)
@@ -77,11 +77,38 @@ args, unknown = parser.parse_known_args()
 
 # if __name__ == thisFilename or args.colab == True:
 # printMessage(f"PHASE3:{__name__}", level=2)
+
+printMessage(f"Booting PHASE :{__name__}", level=2)
+
 TYPE = args.t
 PORT = args.p
-CONFIG = args.c
+CONFIG = args.c if args.c != None else None
 MODEL = args.m if args.m != None else None
 ONNX_MODEL = args.o if args.o != None else None
+HUBERT_MODEL = args.hubert if args.hubert != None else None  # hubertはユーザがダウンロードして解凍フォルダに格納する運用。
+CLUSTER_MODEL = args.cluster if args.cluster != None else None
+USE_HUBERT_ONNX = args.useHubertOnnx
+
+if args.internal and hasattr(sys, "_MEIPASS"):
+    print("use internal path")
+    if CONFIG != None:
+        CONFIG = os.path.join(sys._MEIPASS, CONFIG)
+    if MODEL != None:
+        MODEL = os.path.join(sys._MEIPASS, MODEL)
+    if ONNX_MODEL:
+        ONNX_MODEL = os.path.join(sys._MEIPASS, ONNX_MODEL)
+    if CLUSTER_MODEL:
+        CLUSTER_MODEL = os.path.join(sys._MEIPASS, CLUSTER_MODEL)
+    print(" config path:", CONFIG)
+    print(" model path:", MODEL)
+    print(" onnx model path:", ONNX_MODEL)
+    print(" cluster model path:", CLUSTER_MODEL)
+
+
+MODEL_TYPE = os.environ.get('MODEL_TYPE', None)
+if MODEL_TYPE == None:
+    MODEL_TYPE = args.modelType
+setModelType(MODEL_TYPE)
 
 
 def localServer():
@@ -96,15 +123,19 @@ def localServer():
 
 if args.colab == True:
     os.environ["colab"] = "True"
-# if os.getenv("EX_TB_PORT"):
-#     EX_TB_PORT = os.environ["EX_TB_PORT"]
-#     exApplitionInfo.external_tensorboard_port = int(EX_TB_PORT)
 
-voiceChangerManager = VoiceChangerManager.get_instance()
-if CONFIG and (MODEL or ONNX_MODEL):
-    voiceChangerManager.loadModel(CONFIG, MODEL, ONNX_MODEL)
-app_fastapi = MMVC_Rest.get_instance(voiceChangerManager)
-app_socketio = MMVC_SocketIOApp.get_instance(app_fastapi, voiceChangerManager)
+if __name__ == 'MMVCServerSIO':
+    voiceChangerManager = VoiceChangerManager.get_instance({"hubert": HUBERT_MODEL, "useHubertOnnx": USE_HUBERT_ONNX})
+    if CONFIG and (MODEL or ONNX_MODEL):
+        if MODEL_TYPE == "MMVCv15" or MODEL_TYPE == "MMVCv13":
+            voiceChangerManager.loadModel(CONFIG, MODEL, ONNX_MODEL, None)
+        elif MODEL_TYPE == "so-vits-svc-40" or MODEL_TYPE == "so-vits-svc-40v2" or MODEL_TYPE == "so-vits-svc-40v2_tsukuyomi":
+            voiceChangerManager.loadModel(CONFIG, MODEL, ONNX_MODEL, CLUSTER_MODEL)
+        else:
+            voiceChangerManager.loadModel(CONFIG, MODEL, ONNX_MODEL, CLUSTER_MODEL)
+
+    app_fastapi = MMVC_Rest.get_instance(voiceChangerManager)
+    app_socketio = MMVC_SocketIOApp.get_instance(app_fastapi, voiceChangerManager)
 
 
 if __name__ == '__mp_main__':
@@ -232,7 +263,7 @@ if __name__ == '__main__':
             #     reload = False if hasattr(sys, "_MEIPASS") else True,
             #     log_level="warning"
             # )
-
+            os.environ['MODEL_TYPE'] = MODEL_TYPE
             p = mp.Process(name="p", target=localServer)
             p.start()
             try:

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { VoiceChangerServerSetting, ServerInfo, ServerSettingKey, INDEXEDDB_KEY_SERVER, INDEXEDDB_KEY_MODEL_DATA, DefaultServerSetting } from "../const"
+import { VoiceChangerServerSetting, ServerInfo, ServerSettingKey, INDEXEDDB_KEY_SERVER, INDEXEDDB_KEY_MODEL_DATA, ClientType, DefaultServerSetting_MMVCv13, DefaultServerSetting_MMVCv15, DefaultServerSetting_so_vits_svc_40v2, DefaultServerSetting_so_vits_svc_40 } from "../const"
 import { VoiceChangerClient } from "../VoiceChangerClient"
 import { useIndexedDB } from "./useIndexedDB"
 
@@ -14,15 +14,20 @@ export type FileUploadSetting = {
     pyTorchModel: ModelData | null
     onnxModel: ModelData | null
     configFile: ModelData | null
+    clusterTorchModel: ModelData | null
+    hubertTorchModel: ModelData | null // !! 注意!! hubertTorchModelは固定値で上書きされるため、設定しても効果ない。
 }
 
 const InitialFileUploadSetting: FileUploadSetting = {
     pyTorchModel: null,
     configFile: null,
     onnxModel: null,
+    clusterTorchModel: null,
+    hubertTorchModel: null,
 }
 
 export type UseServerSettingProps = {
+    clientType: ClientType
     voiceChangerClient: VoiceChangerClient | null
 }
 
@@ -42,9 +47,22 @@ export type ServerSettingState = {
 
 export const useServerSetting = (props: UseServerSettingProps): ServerSettingState => {
     // const settingRef = useRef<VoiceChangerServerSetting>(DefaultVoiceChangerServerSetting)
-    const [serverSetting, setServerSetting] = useState<ServerInfo>(DefaultServerSetting)
+    const defaultServerSetting = useMemo(() => {
+        if (props.clientType == "MMVCv13") {
+            return DefaultServerSetting_MMVCv13
+        } else if (props.clientType == "MMVCv15") {
+            return DefaultServerSetting_MMVCv15
+        } else if (props.clientType == "so_vits_svc_40" || props.clientType == "so_vits_svc_40_c") {
+            return DefaultServerSetting_so_vits_svc_40
+        } else if (props.clientType == "so_vits_svc_40v2" || props.clientType == "so_vits_svc_40v2_c") {
+            return DefaultServerSetting_so_vits_svc_40v2
+        } else {
+            return DefaultServerSetting_MMVCv15
+        }
+    }, [])
+    const [serverSetting, setServerSetting] = useState<ServerInfo>(defaultServerSetting)
     const [fileUploadSetting, setFileUploadSetting] = useState<FileUploadSetting>(InitialFileUploadSetting)
-    const { setItem, getItem, removeItem } = useIndexedDB()
+    const { setItem, getItem, removeItem } = useIndexedDB({ clientType: props.clientType })
 
 
     // DBから設定取得（キャッシュによる初期化）
@@ -132,6 +150,11 @@ export const useServerSetting = (props: UseServerSettingProps): ServerSettingSta
                 alert("Configファイルを指定する必要があります。")
                 return
             }
+
+            // if (props.clientType == "so_vits_svc_40v2c" && !fileUploadSetting.hubertTorchModel) {
+            //     alert("content vecのファイルを指定する必要があります。")
+            //     return
+            // }
             if (!props.voiceChangerClient) return
 
             setUploadProgress(0)
@@ -150,9 +173,19 @@ export const useServerSetting = (props: UseServerSettingProps): ServerSettingSta
                 fileUploadSetting.configFile.data = await fileUploadSetting.configFile.file!.arrayBuffer()
                 fileUploadSetting.configFile.filename = await fileUploadSetting.configFile.file!.name
             }
+            // if (props.clientType == "so_vits_svc_40v2c" && !fileUploadSetting.hubertTorchModel!.data) {
+            //     fileUploadSetting.hubertTorchModel!.data = await fileUploadSetting.hubertTorchModel!.file!.arrayBuffer()
+            //     fileUploadSetting.hubertTorchModel!.filename = await fileUploadSetting.hubertTorchModel!.file!.name
+            // }
+            if (fileUploadSetting.clusterTorchModel) {
+                if ((props.clientType == "so_vits_svc_40v2" || props.clientType == "so_vits_svc_40") && !fileUploadSetting.clusterTorchModel!.data) {
+                    fileUploadSetting.clusterTorchModel!.data = await fileUploadSetting.clusterTorchModel!.file!.arrayBuffer()
+                    fileUploadSetting.clusterTorchModel!.filename = await fileUploadSetting.clusterTorchModel!.file!.name
+                }
+            }
 
             // ファイルをサーバにアップロード
-            const models = [fileUploadSetting.onnxModel, fileUploadSetting.pyTorchModel].filter(x => { return x != null }) as ModelData[]
+            const models = [fileUploadSetting.onnxModel, fileUploadSetting.pyTorchModel, fileUploadSetting.clusterTorchModel /*, fileUploadSetting.hubertTorchModel*/].filter(x => { return x != null }) as ModelData[]
             for (let i = 0; i < models.length; i++) {
                 const progRate = 1 / models.length
                 const progOffset = 100 * i * progRate
@@ -166,22 +199,34 @@ export const useServerSetting = (props: UseServerSettingProps): ServerSettingSta
                 console.log(progress, end)
             })
 
-            const loadPromise = props.voiceChangerClient.loadModel(fileUploadSetting.configFile.filename!, fileUploadSetting.pyTorchModel?.filename || null, fileUploadSetting.onnxModel?.filename || null)
+            // !! 注意!! hubertTorchModelは固定値で上書きされるため、設定しても効果ない。
+            const loadPromise = props.voiceChangerClient.loadModel(fileUploadSetting.configFile.filename!, fileUploadSetting.pyTorchModel?.filename || null, fileUploadSetting.onnxModel?.filename || null, fileUploadSetting.clusterTorchModel?.filename || null, fileUploadSetting.hubertTorchModel?.filename || null)
 
             // サーバでロード中にキャッシュにセーブ
-            const saveData: FileUploadSetting = {
-                pyTorchModel: fileUploadSetting.pyTorchModel ? { data: fileUploadSetting.pyTorchModel.data, filename: fileUploadSetting.pyTorchModel.filename } : null,
-                onnxModel: fileUploadSetting.onnxModel ? { data: fileUploadSetting.onnxModel.data, filename: fileUploadSetting.onnxModel.filename } : null,
-                configFile: { data: fileUploadSetting.configFile.data, filename: fileUploadSetting.configFile.filename }
+            try {
+                const saveData: FileUploadSetting = {
+                    pyTorchModel: fileUploadSetting.pyTorchModel ? { data: fileUploadSetting.pyTorchModel.data, filename: fileUploadSetting.pyTorchModel.filename } : null,
+                    onnxModel: fileUploadSetting.onnxModel ? { data: fileUploadSetting.onnxModel.data, filename: fileUploadSetting.onnxModel.filename } : null,
+                    configFile: { data: fileUploadSetting.configFile.data, filename: fileUploadSetting.configFile.filename },
+                    hubertTorchModel: fileUploadSetting.hubertTorchModel ? {
+                        data: fileUploadSetting.hubertTorchModel.data, filename: fileUploadSetting.hubertTorchModel.filename
+                    } : null,
+                    clusterTorchModel: fileUploadSetting.clusterTorchModel ? {
+                        data: fileUploadSetting.clusterTorchModel.data, filename: fileUploadSetting.clusterTorchModel.filename
+                    } : null
+                }
+                setItem(INDEXEDDB_KEY_MODEL_DATA, saveData)
+
+            } catch (e) {
+                console.log("Excpetion:::::::::", e)
             }
-            setItem(INDEXEDDB_KEY_MODEL_DATA, saveData)
 
             await loadPromise
             setUploadProgress(0)
             setIsUploading(false)
             reloadServerInfo()
         }
-    }, [fileUploadSetting, props.voiceChangerClient])
+    }, [fileUploadSetting, props.voiceChangerClient, props.clientType])
 
     const reloadServerInfo = useMemo(() => {
         return async () => {
